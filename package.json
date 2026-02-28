@@ -1,0 +1,22 @@
+{
+  "name": "chan-theory-analyzer",
+  "version": "1.0.0",
+  "description": "缠论技术分析技能 - 基于缠中说禅理论的股票技术分析",
+  "main": "index.js",
+  "keywords": [
+    "chan",
+    "chanlun",
+    "缠论",
+    "技术分析",
+    "股票",
+    "A股"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {
+    "akshare": "^1.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
