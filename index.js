@@ -9,10 +9,42 @@
  * - 中枢识别
  * - 背驰判断
  * - 三类买卖点
+ * 
+ * 集成：调用 Python 脚本进行专业分析
  */
 
 const { exec } = require('child_process');
 const path = require('path');
+
+const SCRIPT_DIR = path.join(__dirname, 'scripts');
+
+/**
+ * 调用 Python 脚本进行专业分析
+ * @param {string} symbol - 股票代码
+ * @returns {Promise<Object>} 分析结果
+ */
+async function callPythonScript(symbol) {
+    return new Promise((resolve, reject) => {
+        const scriptPath = path.join(SCRIPT_DIR, 'enhanced_analyze.py');
+        
+        exec(`python "${scriptPath}" ${symbol}`, 
+            { timeout: 60000 },
+            (error, stdout, stderr) => {
+                if (error) {
+                    console.error('Python脚本错误:', stderr);
+                    reject(error);
+                    return;
+                }
+                try {
+                    const result = JSON.parse(stdout);
+                    resolve(result);
+                } catch (e) {
+                    console.error('JSON解析错误:', stdout);
+                    reject(e);
+                }
+            });
+    });
+}
 
 /**
  * 获取股票K线数据
@@ -255,7 +287,22 @@ async function analyze(params) {
     const { symbol, period = 'daily' } = params;
     
     try {
-        // 获取K线数据
+        // 优先尝试调用 Python 脚本进行专业分析
+        console.log('正在调用 Python 脚本分析 ' + symbol + '...');
+        
+        try {
+            const pyResult = await callPythonScript(symbol);
+            
+            if (pyResult && !pyResult.error) {
+                // 转换为友好格式
+                return formatAnalysisResult(pyResult);
+            }
+        } catch (pyError) {
+            console.log('Python脚本失败，回退到JS分析:', pyError.message);
+        }
+        
+        // 回退到 JavaScript 简单分析
+        console.log('使用 JavaScript 简单分析...');
         const klineData = await getKlineData(symbol, period);
         
         if (klineData.error) {
@@ -296,11 +343,88 @@ async function analyze(params) {
             }
         };
         
-        return result;
+        return formatAnalysisResult(result);
         
     } catch (error) {
         return { error: error.message };
     }
+}
+
+/**
+ * 格式化分析结果为友好中文输出
+ * @param {Object} result - 原始分析结果
+ * @returns {Object} 格式化后的结果
+ */
+function formatAnalysisResult(result) {
+    if (result.error) {
+        return {
+            content: `❌ 分析失败：${result.error}`,
+            raw: result
+        };
+    }
+    
+    const symbol = result.symbol || result.current_price;
+    const price = result.current_price;
+    const change = result.change_pct ? `(${result.change_pct > 0 ? '+' : ''}${result.change_pct}%)` : '';
+    
+    let content = `📊 缠论分析报告\n\n`;
+    content += `🏷️ ${symbol} | 当前价: ¥${price} ${change}\n`;
+    content += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    // 分型
+    if (result.fraction) {
+        content += `🔺 分型: ${result.fraction.type || '无'}\n`;
+    }
+    
+    // 笔
+    if (result.brush) {
+        content += `📈 笔向: ${result.brush.direction || '不确定'}\n`;
+        if (result.brush.strength) {
+            content += `   强度: ${result.brush.strength}\n`;
+        }
+    } else if (result.analysis && result.analysis.brush_direction) {
+        content += `📈 笔向: ${result.analysis.brush_direction}\n`;
+    }
+    
+    // 中枢
+    if (result.center && result.center.exists) {
+        content += `\n🏠 中枢区域: ¥${result.center.low} ~ ¥${result.center.high}\n`;
+        content += `   振幅: ¥${result.center.range}\n`;
+    } else {
+        content += `\n🏠 中枢: 暂未形成\n`;
+    }
+    
+    // 背驰
+    if (result.divergence) {
+        content += `\n⚡ 背驰: ${result.divergence.status || '未背驰'}\n`;
+        if (result.divergence.signal) {
+            content += `   ${result.divergence.signal}\n`;
+        }
+    } else if (result.analysis && result.analysis.divergence) {
+        content += `\n⚡ 背驰: ${result.analysis.divergence.status || '未背驰'}\n`;
+    }
+    
+    // 买卖点
+    const buySell = result.buy_sell_points || result.analysis?.signals;
+    if (buySell && Object.keys(buySell).length > 0) {
+        content += `\n🎯 买卖点:\n`;
+        for (const [key, value] of Object.entries(buySell)) {
+            if (value.signal || value.action) {
+                content += `   ${key}: ${value.signal || value.action}\n`;
+            }
+        }
+    }
+    
+    // 建议
+    const recommendation = result.recommendation || result.summary?.recommendation;
+    if (recommendation) {
+        content += `\n💡 操作建议: ${recommendation}\n`;
+    }
+    
+    return {
+        content: content,
+        raw: result
+    };
 }
 
 /**
