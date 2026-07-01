@@ -20,4 +20,4 @@ jobs:
         run: pip install akshare
 
       - name: 分析股票
-        run: python scripts/quick_analyze.py 002639
+        run: python scripts/quick_analyze.py 002536
