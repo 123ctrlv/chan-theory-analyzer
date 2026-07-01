@@ -1,3 +1,23 @@
-git clone https://github.com/HMH66/chan-theory-analyzer.git
-cd chan-theory-analyzer
-pip install akshare
+name: 运行股票分析
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # 自动拉取代码（不需要手动 git clone）
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        run: pip install akshare
+
+      - name: 分析股票
+        run: python scripts/quick_analyze.py 002639
